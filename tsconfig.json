@@ -17,7 +17,8 @@
     "declaration": false,
     "skipLibCheck": true,
     "target": "ES2019",
-    "module": "CommonJS"
+    "module": "CommonJS",
+    "outDir": "dist"
   },
   "include": ["src/**/*.ts"]
 }
