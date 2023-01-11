@@ -1,0 +1,3 @@
+[submodule "fogata"]
+	path = fogata
+	url = https://github.com/joticajulian/fogata.git
