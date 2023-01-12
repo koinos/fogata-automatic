@@ -1,4 +1,5 @@
 import { Provider, Signer, Contract } from "koilib";
+import { OperationJson } from "koilib/lib/interface";
 import { config } from "./config";
 import abiFogata from "./fogata-abi.json";
 import { defineGetAllAccounts } from "./utilsFogata";
@@ -11,6 +12,7 @@ async function main() {
   if (!network) throw new Error(`network ${networkName} not found`);
   const provider = new Provider(network.rpcNodes);
   const manaSharer = Signer.fromWif(network.accounts.manaSharer.privateKey);
+  manaSharer.provider = provider;
 
   if (!network.accounts.fogata.id)
     throw new Error(
@@ -21,14 +23,27 @@ async function main() {
     abi: abiFogata,
     signer: manaSharer,
     provider,
-  }).functions;
-  fogata.get_all_accounts = defineGetAllAccounts(fogata);
+  });
+  fogata.functions.get_all_accounts = defineGetAllAccounts(fogata.functions);
 
   console.log(`Fogata ${network.accounts.fogata.id} (${networkName})`);
-  const { result: accounts } = await fogata.get_all_accounts();
-  const { result: poolState } = await fogata.get_pool_state();
-  console.log(accounts);
-  console.log(poolState);
+  const { accounts } = (
+    await fogata.functions.get_all_accounts<{ accounts: string[] }>()
+  ).result!;
+  // const { result: poolState } = await fogata.functions.get_pool_state();
+
+  fogata.options.onlyOperation = true;
+  const operations: OperationJson[] = [];
+  for (let i = 0; i < accounts.length; i += 1) {
+    const account = accounts[i];
+    const { operation } = await fogata.functions.collect({ account });
+    operations.push(operation);
+  }
+  const tx = await manaSharer.prepareTransaction({ operations });
+  await manaSharer.signTransaction(tx);
+  const result = await provider.sendTransaction(tx);
+  console.log(tx);
+  console.log(result);
 }
 
 main()
