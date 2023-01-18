@@ -53,11 +53,14 @@ export class TransactionsHandler {
     });
   }
 
-  async processTransaction(record: Rec, isRetry = false): Promise<void> {
+  async broadcastTransaction(
+    record: Rec,
+    isRetry = false
+  ): Promise<{ record: Rec; pending: boolean }> {
     try {
       if (record.availableRetries <= 0) {
         log("record with no more retries", record);
-        return;
+        return { record, pending: false };
       }
       log(
         isRetry ? "retry: processing operations" : "processing new operations",
@@ -70,55 +73,70 @@ export class TransactionsHandler {
       const { transaction, receipt } = await this.signer.sendTransaction(tx);
       Object.assign(record, { transaction, receipt, sendTime: Date.now() });
       log("transaction submitted", record);
-      this.records.push(record);
+      return { record, pending: true };
     } catch (error) {
       const availableRetries = record.availableRetries - 1;
       Object.assign(record, {
         error: (error as Error).toString(),
-        availableRetries: record.availableRetries - 1,
+        availableRetries,
       });
       log("transaction error", record);
-      if (availableRetries > 0) {
-        this.records.push(record);
-      } else {
-        log("no more retries", record);
-      }
+      const pending = availableRetries > 0;
+      if (!pending) log("no more retries", record);
+      return { record, pending };
     }
   }
 
-  async processNext(): Promise<void> {
-    const record = this.records.shift();
-    if (!record) return;
+  async searchTransactionId(record: Rec): Promise<boolean> {
+    const { transactions: txs } =
+      await this.signer.provider!.getTransactionsById([
+        record.transaction!.id!,
+      ]);
+    if (!txs || !txs[0] || txs[0].containing_blocks) return false;
+
+    const { containing_blocks: blockIds } = txs[0];
+    const blocks = await this.signer.provider!.getBlocksById(blockIds);
+    const blockNumbers = blocks.block_items.map(
+      (blockItem) => blockItem.block_height
+    );
+    Object.assign(record, { blockIds, blockNumbers });
+    log("transaction mined", record);
+    // not added to the queue
+    return true;
+  }
+
+  async processRecord(record: Rec): Promise<{ record: Rec; pending: boolean }> {
     if (!record.transaction) {
-      this.processTransaction(record);
-      return;
+      return this.broadcastTransaction(record);
     }
 
+    // search transaction id
     try {
-      const { transactions: txs } =
-        await this.signer.provider!.getTransactionsById([
-          record.transaction.id!,
-        ]);
-      if (txs && txs[0] && txs[0].containing_blocks) {
-        const { containing_blocks: blockIds } = txs[0];
-        const blocks = await this.signer.provider!.getBlocksById(blockIds);
-        const blockNumbers = blocks.block_items.map(
-          (blockItem) => blockItem.block_height
-        );
-        Object.assign(record, { blockIds, blockNumbers });
-        log("transaction mined", record);
-      } else {
-        if (Date.now() > record.sendTime! + this.txWaitingTime) {
-          record.availableRetries -= 1;
-          this.processTransaction(record, true);
-        } else {
-          log("transaction not mined yet", record);
-          this.records.push(record);
-        }
-      }
+      const found = await this.searchTransactionId(record);
+      if (found) return { record, pending: false };
     } catch (error) {
       Object.assign(record, { error: (error as Error).toString() });
       log("provider error", record);
+    }
+
+    // not found. Check if it's time to retry
+    if (Date.now() > record.sendTime! + this.txWaitingTime) {
+      record.availableRetries -= 1;
+      return this.broadcastTransaction(record, true);
+    }
+
+    // wait and check later
+    log("transaction not mined yet", record);
+    return { record, pending: true };
+  }
+
+  async processNext(): Promise<void> {
+    const rec = this.records.shift();
+    if (!rec) return;
+    const { record, pending } = await this.processRecord(rec);
+    if (pending) {
+      // bring back to the queue again
+      this.records.push(record);
     }
   }
 }
