@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { Signer } from "koilib";
 import { OperationJson, TransactionJson } from "koilib/lib/interface";
+import { log } from "./utilsFogata";
 
 interface Rec {
   id: string;
@@ -12,22 +13,19 @@ interface Rec {
   [others: string]: unknown;
 }
 
-function log(msg: string, data: unknown): void {
-  const time = Date.now();
-  console.log(JSON.stringify({ time, msg, data }));
-}
-
 export class TransactionsHandler {
   signer: Signer;
   records: Rec[];
   txWaitingTime: number;
+  periodTime: number;
   retries: number;
 
   constructor(
     signer: Signer,
     opts?: {
       txWaitingTime?: number;
-      retries: number;
+      periodTime?: number;
+      retries?: number;
     }
   ) {
     if (!signer.provider) {
@@ -37,10 +35,15 @@ export class TransactionsHandler {
     this.records = [];
     this.txWaitingTime = 30000;
     this.retries = 3;
+    this.periodTime = 10000;
     if (opts) {
       if (opts.txWaitingTime) this.txWaitingTime = opts.txWaitingTime;
+      if (opts.periodTime) this.periodTime = opts.periodTime;
       if (opts.retries) this.retries = opts.retries;
     }
+    setInterval(() => {
+      this.processNext();
+    }, this.periodTime);
   }
 
   push(summary: string, operations: OperationJson[], retries?: number): void {

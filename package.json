@@ -6,6 +6,10 @@
   "scripts": {
     "build": "tsc",
     "copy:abis": "copyfiles -u 2 fogata/build/fogata-abi.json src && copyfiles -u 2 fogata/build/pools-abi.json src",
+    "lint": "yarn lint:prettier && yarn lint:eslint && yarn lint:tsc",
+    "lint:prettier": "prettier . --check",
+    "lint:eslint": "eslint . --ext .js,.ts",
+    "lint:tsc": "tsc --noEmit --incremental false",
     "start:dev": "ts-node src/index"
   },
   "dependencies": {
@@ -23,7 +27,6 @@
     "eslint-config-airbnb-typescript": "^17.0.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-import": "^2.26.0",
-    "eslint-plugin-jest": "^26.8.7",
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-tsdoc": "^0.2.16",
     "prettier": "^2.7.1",

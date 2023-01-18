@@ -1,10 +1,14 @@
 import { Contract } from "koilib";
 
+export function log(msg: string, data: unknown): void {
+  const time = Date.now();
+  console.log(JSON.stringify({ time, msg, data }));
+}
+
 export function defineGetAllAccounts(
   fogata: Contract["functions"]
 ): Contract["functions"]["x"] {
   return async <T = Record<string, unknown>>() => {
-    console.log("test");
     const accounts: string[] = [];
     const limit = 500;
     let fromAccount = "";
