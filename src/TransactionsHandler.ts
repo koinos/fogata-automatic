@@ -56,68 +56,77 @@ export class TransactionsHandler {
   async broadcastTransaction(
     record: Rec,
     isRetry = false
-  ): Promise<{ record: Rec; pending: boolean }> {
+  ): Promise<{ record: Rec; pending: boolean; message: string }> {
     try {
       if (record.availableRetries <= 0) {
-        log("record with no more retries", record);
-        return { record, pending: false };
+        return {
+          record,
+          pending: false,
+          message: "record with no more retries",
+        };
       }
-      log(
-        isRetry ? "retry: processing operations" : "processing new operations",
-        record
-      );
+      const msg = isRetry
+        ? "retry: processing operations"
+        : "processing new operations";
+      log(msg, record);
       const tx = await this.signer.prepareTransaction({
         operations: record.operations,
       });
       log("transaction created", tx);
       const { transaction, receipt } = await this.signer.sendTransaction(tx);
       Object.assign(record, { transaction, receipt, sendTime: Date.now() });
-      log("transaction submitted", record);
-      return { record, pending: true };
+      return { record, pending: true, message: "transaction submitted" };
     } catch (error) {
       const availableRetries = record.availableRetries - 1;
       Object.assign(record, {
         error: (error as Error).toString(),
         availableRetries,
       });
-      log("transaction error", record);
       const pending = availableRetries > 0;
-      if (!pending) log("no more retries", record);
-      return { record, pending };
+      return {
+        record,
+        pending,
+        message: `transaction error. available retries: ${availableRetries}`,
+      };
     }
   }
 
-  async searchTransactionId(record: Rec): Promise<boolean> {
-    const { transactions: txs } =
-      await this.signer.provider!.getTransactionsById([
-        record.transaction!.id!,
-      ]);
-    if (!txs || !txs[0] || txs[0].containing_blocks) return false;
+  async searchTransactionId(
+    record: Rec
+  ): Promise<{ record: Rec; pending: boolean; message: string }> {
+    try {
+      const { transactions: txs } =
+        await this.signer.provider!.getTransactionsById([
+          record.transaction!.id!,
+        ]);
+      if (!txs || !txs[0] || txs[0].containing_blocks)
+        return { record, pending: true, message: "" };
 
-    const { containing_blocks: blockIds } = txs[0];
-    const blocks = await this.signer.provider!.getBlocksById(blockIds);
-    const blockNumbers = blocks.block_items.map(
-      (blockItem) => blockItem.block_height
-    );
-    Object.assign(record, { blockIds, blockNumbers });
-    log("transaction mined", record);
-    // not added to the queue
-    return true;
+      const { containing_blocks: blockIds } = txs[0];
+      const blocks = await this.signer.provider!.getBlocksById(blockIds);
+      const blockNumbers = blocks.block_items.map(
+        (blockItem) => blockItem.block_height
+      );
+      Object.assign(record, { blockIds, blockNumbers });
+      return { record, pending: false, message: "transaction mined" };
+    } catch (error) {
+      Object.assign(record, { error: (error as Error).toString() });
+      log("provider error", record);
+      return { record, pending: true, message: "" };
+    }
   }
 
-  async processRecord(record: Rec): Promise<{ record: Rec; pending: boolean }> {
+  async processRecord(
+    record: Rec
+  ): Promise<{ record: Rec; pending: boolean; message: string }> {
+    // check if it is already broadcasted
     if (!record.transaction) {
       return this.broadcastTransaction(record);
     }
 
     // search transaction id
-    try {
-      const found = await this.searchTransactionId(record);
-      if (found) return { record, pending: false };
-    } catch (error) {
-      Object.assign(record, { error: (error as Error).toString() });
-      log("provider error", record);
-    }
+    const result = await this.searchTransactionId(record);
+    if (!result.pending) return result;
 
     // not found. Check if it's time to retry
     if (Date.now() > record.sendTime! + this.txWaitingTime) {
@@ -126,14 +135,14 @@ export class TransactionsHandler {
     }
 
     // wait and check later
-    log("transaction not mined yet", record);
-    return { record, pending: true };
+    return { record, pending: true, message: "transaction not mined yet" };
   }
 
   async processNext(): Promise<void> {
     const rec = this.records.shift();
     if (!rec) return;
-    const { record, pending } = await this.processRecord(rec);
+    const { record, pending, message } = await this.processRecord(rec);
+    log(message, record);
     if (pending) {
       // bring back to the queue again
       this.records.push(record);
