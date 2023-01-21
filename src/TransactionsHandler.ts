@@ -1,7 +1,30 @@
 import crypto from "crypto";
 import { Signer } from "koilib";
-import { OperationJson, TransactionJson } from "koilib/lib/interface";
+import {
+  OperationJson,
+  TransactionJson,
+  TransactionReceipt,
+} from "koilib/lib/interface";
 import { log } from "./utilsFogata";
+
+export interface TransactionsHandlerResponse {
+  transaction?: TransactionJson;
+  receipt?: TransactionReceipt;
+  errors?: string[];
+}
+
+export class TransactionsHandlerError extends Error {
+  transaction?: TransactionJson;
+  receipt?: TransactionReceipt;
+  errors?: string[];
+
+  constructor(r: TransactionsHandlerResponse) {
+    super("transaction error");
+    this.transaction = r.transaction;
+    this.receipt = r.receipt;
+    this.errors = r.errors;
+  }
+}
 
 interface Rec {
   id: string;
@@ -9,13 +32,17 @@ interface Rec {
   operations: OperationJson[];
   availableRetries: number;
   transaction?: TransactionJson;
+  receipt?: TransactionReceipt;
   sendTime?: number;
-  [others: string]: unknown;
+  pending: boolean;
+  errors: string[];
+  success: boolean;
 }
 
 export class TransactionsHandler {
   signer: Signer;
   records: Rec[];
+  recordsProcessed: Rec[];
   txWaitingTime: number;
   periodTime: number;
   retries: number;
@@ -33,6 +60,7 @@ export class TransactionsHandler {
     }
     this.signer = signer;
     this.records = [];
+    this.recordsProcessed = [];
     this.txWaitingTime = 30000;
     this.retries = 3;
     this.periodTime = 10000;
@@ -46,25 +74,47 @@ export class TransactionsHandler {
     }, this.periodTime);
   }
 
-  push(summary: string, operations: OperationJson[], retries?: number): void {
-    const id = crypto.randomBytes(4).toString("hex");
+  push(
+    summary: string,
+    operations: OperationJson[],
+    retries?: number
+  ): Promise<TransactionsHandlerResponse> {
+    const id = crypto.randomBytes(6).toString("hex");
     this.records.push({
       id,
       summary,
       operations,
       availableRetries: retries || this.retries,
+      pending: true,
+      success: false,
+      errors: [],
+    });
+    return new Promise((resolve, reject) => {
+      const timer = setInterval(() => {
+        const i = this.recordsProcessed.findIndex((r) => r.id === id);
+        if (i < 0) return;
+        const [record] = this.recordsProcessed.splice(i, 1);
+        const result = {
+          transaction: record.transaction,
+          receipt: record.receipt,
+          errors: record.errors,
+        };
+        if (record.success) resolve(result);
+        else reject(new TransactionsHandlerError(result));
+        clearInterval(timer);
+      }, 1000);
     });
   }
 
   async broadcastTransaction(
     record: Rec,
     isRetry = false
-  ): Promise<{ record: Rec; pending: boolean; message: string }> {
+  ): Promise<{ record: Rec; message: string }> {
     try {
       if (record.availableRetries <= 0) {
+        record.pending = false;
         return {
           record,
-          pending: false,
           message: "record with no more retries",
         };
       }
@@ -78,50 +128,50 @@ export class TransactionsHandler {
       log("transaction created", tx);
       const { transaction, receipt } = await this.signer.sendTransaction(tx);
       Object.assign(record, { transaction, receipt, sendTime: Date.now() });
-      return { record, pending: true, message: "transaction submitted" };
+      return { record, message: "transaction submitted" };
     } catch (error) {
-      const availableRetries = record.availableRetries - 1;
-      Object.assign(record, {
-        error: (error as Error).toString(),
-        availableRetries,
-      });
-      const pending = availableRetries > 0;
+      record.availableRetries -= 1;
+      record.errors.push((error as Error).toString());
+      record.pending = record.availableRetries > 0;
       return {
         record,
-        pending,
-        message: `transaction error. available retries: ${availableRetries}`,
+        message: `transaction error. available retries: ${record.availableRetries}`,
       };
     }
   }
 
   async searchTransactionId(
     record: Rec
-  ): Promise<{ record: Rec; pending: boolean; message: string }> {
+  ): Promise<{ record: Rec; message: string }> {
     try {
       const { transactions: txs } =
         await this.signer.provider!.getTransactionsById([
           record.transaction!.id!,
         ]);
-      if (!txs || !txs[0] || txs[0].containing_blocks)
-        return { record, pending: true, message: "" };
+      if (!txs || !txs[0] || txs[0].containing_blocks) {
+        return { record, message: "" };
+      }
 
       const { containing_blocks: blockIds } = txs[0];
       const blocks = await this.signer.provider!.getBlocksById(blockIds);
       const blockNumbers = blocks.block_items.map(
         (blockItem) => blockItem.block_height
       );
-      Object.assign(record, { blockIds, blockNumbers });
-      return { record, pending: false, message: "transaction mined" };
+      Object.assign(record, {
+        blockIds,
+        blockNumbers,
+        pending: false,
+        success: true,
+      });
+      return { record, message: "transaction mined" };
     } catch (error) {
       Object.assign(record, { error: (error as Error).toString() });
       log("provider error", record);
-      return { record, pending: true, message: "" };
+      return { record, message: "" };
     }
   }
 
-  async processRecord(
-    record: Rec
-  ): Promise<{ record: Rec; pending: boolean; message: string }> {
+  async processRecord(record: Rec): Promise<{ record: Rec; message: string }> {
     // check if it is already broadcasted
     if (!record.transaction) {
       return this.broadcastTransaction(record);
@@ -129,7 +179,7 @@ export class TransactionsHandler {
 
     // search transaction id
     const result = await this.searchTransactionId(record);
-    if (!result.pending) return result;
+    if (!result.record.pending) return result;
 
     // not found. Check if it's time to retry
     if (Date.now() > record.sendTime! + this.txWaitingTime) {
@@ -138,17 +188,19 @@ export class TransactionsHandler {
     }
 
     // wait and check later
-    return { record, pending: true, message: "transaction not mined yet" };
+    return { record, message: "transaction not mined yet" };
   }
 
   async processNext(): Promise<void> {
     const rec = this.records.shift();
     if (!rec) return;
-    const { record, pending, message } = await this.processRecord(rec);
+    const { record, message } = await this.processRecord(rec);
     log(message, record);
-    if (pending) {
+    if (record.pending) {
       // bring back to the queue again
       this.records.push(record);
+    } else {
+      this.recordsProcessed.push(record);
     }
   }
 }

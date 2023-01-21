@@ -55,12 +55,11 @@ async function main() {
         }
 
         fogata.options.onlyOperation = true;
-        const operations: OperationJson[] = [];
         const { operation: payBeneficiaries } =
           await fogata.functions.pay_beneficiaries();
         const { operation: reburnAndSnapshot } =
           await fogata.functions.reburn_and_snapshot();
-        operations.push(payBeneficiaries, reburnAndSnapshot);
+        const operations: OperationJson[] = [];
         for (let i = 0; i < accounts.length; i += 1) {
           const account = accounts[i];
           const { operation } = await fogata.functions.collect({ account });
@@ -68,8 +67,27 @@ async function main() {
         }
         fogata.options.onlyOperation = false;
 
-        txHandler.push(`collect for ${accounts.join(", ")}`, operations);
-        fogata.nextReburn = Number(poolState.next_snapshot);
+        (async () => {
+          if (fogata.processing) return;
+          fogata.processing = true;
+          try {
+            await txHandler.push("pay beneficiaries", [payBeneficiaries]);
+            log(".".repeat(200) + "pay beneficiaries done", {});
+          } catch {}
+          try {
+            await txHandler.push("reburn and snapshot", [reburnAndSnapshot]);
+            log(".".repeat(200) + "reburn and snapshot done", {});
+            fogata.nextReburn = Number(poolState.next_snapshot);
+          } catch {}
+          try {
+            await txHandler.push(
+              `collect for ${accounts.join(", ")}`,
+              operations
+            );
+            log(".".repeat(200) + "collect done", {});
+          } catch {}
+          fogata.processing = false;
+        })().catch(() => {});
       } catch (error) {
         log(`error in pool ${fogata.getId()}`, {
           error: (error as Error).message,
