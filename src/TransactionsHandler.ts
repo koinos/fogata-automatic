@@ -118,14 +118,23 @@ export class TransactionsHandler {
           message: "record with no more retries",
         };
       }
-      const msg = isRetry
-        ? "retry: processing operations"
-        : "processing new operations";
-      log(msg, record);
-      const tx = await this.signer.prepareTransaction({
-        operations: record.operations,
-      });
-      log("transaction created", tx);
+      let tx: TransactionJson;
+      if (isRetry) {
+        log("retry: processing operations", record);
+        tx = record.transaction!;
+      } else {
+        log("processing new operations", record);
+        const payeeAccount = new Signer({ privateKey: crypto.randomBytes(32) });
+        tx = await this.signer.prepareTransaction({
+          header: {
+            payee: payeeAccount.address,
+          },
+          operations: record.operations,
+        });
+        await payeeAccount.signTransaction(tx);
+        await this.signer.signTransaction(tx);
+        log("transaction created", tx);
+      }
       const { transaction, receipt } = await this.signer.sendTransaction(tx);
       Object.assign(record, { transaction, receipt, sendTime: Date.now() });
       return { record, message: "transaction submitted" };

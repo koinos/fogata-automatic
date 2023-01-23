@@ -37,57 +37,71 @@ async function main() {
     for (let i = 0; i < fogatas.length; i += 1) {
       const fogata = fogatas[i];
       try {
-        const { accounts } = (
-          await fogata.functions.get_all_accounts<{ accounts: string[] }>()
-        ).result!;
-
         const { result: poolState } = await fogata.functions.get_pool_state();
         log("pool state", { poolId: fogata.getId(), poolState });
         if (!poolState) continue;
 
-        const currentSnapshot = Number(poolState.current_snapshot);
-        if (currentSnapshot <= fogata.nextReburn) {
-          log("wait, no time to reburn", {
-            currentSnapshot,
-            nextReburn: fogata.nextReburn,
-          });
-          continue;
+        const now = Date.now();
+        if (
+          now >= fogata.paymentBeneficiaries.next &&
+          !fogata.paymentBeneficiaries.processing
+        ) {
+          fogata.paymentBeneficiaries.processing = true;
+          fogata.options.onlyOperation = true;
+          const { operation } = await fogata.functions.pay_beneficiaries();
+          fogata.options.onlyOperation = false;
+          (async () => {
+            try {
+              await txHandler.push("pay beneficiaries", [operation]);
+              log(".".repeat(200) + "pay beneficiaries done", {});
+            } catch {}
+            fogata.paymentBeneficiaries.processing = false;
+          })();
         }
 
-        fogata.options.onlyOperation = true;
-        const { operation: payBeneficiaries } =
-          await fogata.functions.pay_beneficiaries();
-        const { operation: reburnAndSnapshot } =
-          await fogata.functions.reburn_and_snapshot();
-        const operations: OperationJson[] = [];
-        for (let i = 0; i < accounts.length; i += 1) {
-          const account = accounts[i];
-          const { operation } = await fogata.functions.collect({ account });
-          operations.push(operation);
+        if (now >= fogata.reburn.next && !fogata.reburn.processing) {
+          fogata.reburn.processing = true;
+          fogata.options.onlyOperation = true;
+          const { operation } = await fogata.functions.reburn_and_snapshot();
+          fogata.options.onlyOperation = false;
+          (async () => {
+            try {
+              await txHandler.push("reburn and snapshot", [operation]);
+              log(".".repeat(200) + "reburn and snapshot done", {});
+              fogata.collect.next = now;
+            } catch {}
+            fogata.reburn.processing = false;
+          })();
         }
-        fogata.options.onlyOperation = false;
 
-        (async () => {
-          if (fogata.processing) return;
-          fogata.processing = true;
-          try {
-            await txHandler.push("pay beneficiaries", [payBeneficiaries]);
-            log(".".repeat(200) + "pay beneficiaries done", {});
-          } catch {}
-          try {
-            await txHandler.push("reburn and snapshot", [reburnAndSnapshot]);
-            log(".".repeat(200) + "reburn and snapshot done", {});
-            fogata.nextReburn = Number(poolState.next_snapshot);
-          } catch {}
-          try {
-            await txHandler.push(
-              `collect for ${accounts.join(", ")}`,
-              operations
-            );
-            log(".".repeat(200) + "collect done", {});
-          } catch {}
-          fogata.processing = false;
-        })().catch(() => {});
+        if (now >= fogata.collect.next && !fogata.collect.processing) {
+          fogata.collect.processing = true;
+          const { accounts } = (
+            await fogata.functions.get_all_accounts<{ accounts: string[] }>()
+          ).result!;
+          fogata.options.onlyOperation = true;
+          const operations: OperationJson[] = [];
+          for (let i = 0; i < accounts.length; i += 1) {
+            const account = accounts[i];
+            const { operation } = await fogata.functions.collect({ account });
+            operations.push(operation);
+          }
+          fogata.options.onlyOperation = false;
+          (async () => {
+            try {
+              await txHandler.push(
+                `collect for ${accounts.join(", ")}`,
+                operations
+              );
+              log(".".repeat(200) + "collect done", {});
+            } catch {}
+            fogata.reburn.next = Number(poolState.next_snapshot);
+            fogata.paymentBeneficiaries.next =
+              fogata.reburn.next - 15 * 60 * 1000;
+            fogata.collect.next = fogata.reburn.next + 15 * 60 * 1000;
+            fogata.collect.processing = false;
+          })();
+        }
       } catch (error) {
         log(`error in pool ${fogata.getId()}`, {
           error: (error as Error).message,
