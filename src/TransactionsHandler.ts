@@ -125,9 +125,14 @@ export class TransactionsHandler {
       } else {
         log("processing new operations", record);
         const payeeAccount = new Signer({ privateKey: crypto.randomBytes(32) });
+        const maxMana = await this.signer.provider!.getAccountRc(
+          this.signer.address
+        );
+        const mana = (BigInt(maxMana) / BigInt(10)).toString();
         tx = await this.signer.prepareTransaction({
           header: {
             payee: payeeAccount.address,
+            rc_limit: mana,
           },
           operations: record.operations,
         });
@@ -157,7 +162,7 @@ export class TransactionsHandler {
         await this.signer.provider!.getTransactionsById([
           record.transaction!.id!,
         ]);
-      if (!txs || !txs[0] || txs[0].containing_blocks) {
+      if (!txs || !txs[0] || !txs[0].containing_blocks) {
         return { record, message: "" };
       }
 
