@@ -1,5 +1,6 @@
 node_modules
 dist/*
 fogata
+logs
 .env*
 !.env.example

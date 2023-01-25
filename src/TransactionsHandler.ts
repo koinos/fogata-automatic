@@ -15,7 +15,9 @@ export interface TransactionsHandlerResponse {
 
 export class TransactionsHandlerError extends Error {
   transaction?: TransactionJson;
+
   receipt?: TransactionReceipt;
+
   errors?: string[];
 
   constructor(r: TransactionsHandlerResponse) {
@@ -99,7 +101,10 @@ export class TransactionsHandler {
           receipt: record.receipt,
           errors: record.errors,
         };
-        if (record.success) resolve(result);
+        if (record.success) {
+          log(`done - ${summary}`, record);
+          resolve(result);
+        }
         else reject(new TransactionsHandlerError(result));
         clearInterval(timer);
       }, 1000);

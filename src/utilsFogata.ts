@@ -5,6 +5,12 @@ export function log(msg: string, data: unknown): void {
   console.log(JSON.stringify({ time, msg, data }));
 }
 
+export async function sleep(ms: number): Promise<void> {
+  return new Promise((r) => {
+    setTimeout(r, ms);
+  });
+}
+
 export function defineGetAllAccounts(
   fogata: Contract["functions"]
 ): Contract["functions"]["x"] {

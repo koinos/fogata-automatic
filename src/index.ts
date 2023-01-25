@@ -4,7 +4,7 @@ import { config } from "./config";
 import abiFogata from "./fogata-abi.json";
 import { FogataContract } from "./interfaces";
 import { TransactionsHandler } from "./TransactionsHandler";
-import { log } from "./utilsFogata";
+import { log, sleep } from "./utilsFogata";
 
 async function main() {
   const [inputNetworkName] = process.argv.slice(2);
@@ -53,10 +53,9 @@ async function main() {
           (async () => {
             try {
               await txHandler.push("pay beneficiaries", [operation]);
-              log(".".repeat(200) + "pay beneficiaries done", {});
             } catch {}
             fogata.paymentBeneficiaries.processing = false;
-          })();
+          })().catch();
         }
 
         if (now >= fogata.reburn.next && !fogata.reburn.processing) {
@@ -67,11 +66,10 @@ async function main() {
           (async () => {
             try {
               await txHandler.push("reburn and snapshot", [operation]);
-              log(".".repeat(200) + "reburn and snapshot done", {});
               fogata.collect.next = now;
             } catch {}
             fogata.reburn.processing = false;
-          })();
+          })().catch();
         }
 
         if (now >= fogata.collect.next && !fogata.collect.processing) {
@@ -81,8 +79,8 @@ async function main() {
           ).result!;
           fogata.options.onlyOperation = true;
           const operations: OperationJson[] = [];
-          for (let i = 0; i < accounts.length; i += 1) {
-            const account = accounts[i];
+          for (let j = 0; j < accounts.length; j += 1) {
+            const account = accounts[j];
             const { operation } = await fogata.functions.collect({ account });
             operations.push(operation);
           }
@@ -93,14 +91,13 @@ async function main() {
                 `collect for ${accounts.join(", ")}`,
                 operations
               );
-              log(".".repeat(200) + "collect done", {});
             } catch {}
             fogata.reburn.next = Number(poolState.next_snapshot);
             fogata.paymentBeneficiaries.next =
               fogata.reburn.next - 15 * 60 * 1000;
             fogata.collect.next = fogata.reburn.next + 15 * 60 * 1000;
             fogata.collect.processing = false;
-          })();
+          })().catch();
         }
       } catch (error) {
         log(`error in pool ${fogata.getId()}`, {
@@ -108,9 +105,7 @@ async function main() {
         });
       }
     }
-    await new Promise((r) => {
-      setTimeout(r, sleepTime);
-    });
+    await sleep(sleepTime);
   }
 }
 

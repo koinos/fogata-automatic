@@ -6,10 +6,12 @@ export class FogataContract extends Contract {
     next: number;
     processing: boolean;
   };
+
   reburn: {
     next: number;
     processing: boolean;
   };
+
   collect: {
     next: number;
     processing: boolean;
@@ -22,4 +24,10 @@ export class FogataContract extends Contract {
     this.reburn = { next: 0, processing: false };
     this.collect = { next: 0, processing: false };
   }
+}
+
+export interface Chunk {
+  time: number;
+  msg: string;
+  data: { [x: string]: unknown };
 }
