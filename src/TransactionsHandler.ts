@@ -77,12 +77,13 @@ export class TransactionsHandler {
   }
 
   push(
+    contractName: string,
     summary: string,
     operations: OperationJson[],
     retries?: number
   ): Promise<TransactionsHandlerResponse> {
-    const id = crypto.randomBytes(6).toString("hex");
-    this.records.push({
+    const id = `${contractName}-${crypto.randomBytes(4).toString("hex")}`;
+    const rec = {
       id,
       summary,
       operations,
@@ -90,7 +91,9 @@ export class TransactionsHandler {
       pending: true,
       success: false,
       errors: [],
-    });
+    };
+    this.records.push(rec);
+    log(`start ${summary}`, rec);
     return new Promise((resolve, reject) => {
       const timer = setInterval(() => {
         const i = this.recordsProcessed.findIndex((r) => r.id === id);
@@ -104,8 +107,9 @@ export class TransactionsHandler {
         if (record.success) {
           log(`done - ${summary}`, record);
           resolve(result);
+        } else {
+          reject(new TransactionsHandlerError(result));
         }
-        else reject(new TransactionsHandlerError(result));
         clearInterval(timer);
       }, 1000);
     });
@@ -143,7 +147,7 @@ export class TransactionsHandler {
         });
         await payeeAccount.signTransaction(tx);
         await this.signer.signTransaction(tx);
-        log("transaction created", tx);
+        log("transaction created", { id: record.id, transaction: tx });
       }
       const { transaction, receipt } = await this.signer.sendTransaction(tx);
       Object.assign(record, { transaction, receipt, sendTime: Date.now() });

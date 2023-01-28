@@ -1,8 +1,9 @@
 import { Contract } from "koilib";
 
-export function log(msg: string, data: unknown): void {
+export function log(msg: string, _data: unknown): void {
   const time = Date.now();
-  console.log(JSON.stringify({ time, msg, data }));
+  const data = typeof _data === "object" ? _data : { data: _data };
+  console.log(JSON.stringify({ time, msg, ...data }));
 }
 
 export async function sleep(ms: number): Promise<void> {

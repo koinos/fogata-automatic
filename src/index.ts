@@ -15,17 +15,28 @@ async function main() {
   const manaSharer = Signer.fromWif(network.accounts.manaSharer.privateKey);
   manaSharer.provider = provider;
 
-  if (!network.miningPools || network.miningPools.length === 0)
+  if (!network.miningPoolIds || network.miningPoolIds.length === 0)
     throw new Error("no mining pools defined");
 
-  const fogatas: FogataContract[] = network.miningPools.map((miningPool) => {
-    const contract = new FogataContract({
-      id: miningPool,
-      abi: abiFogata,
-      provider,
-    });
-    return contract;
-  });
+  if (
+    !network.miningPoolNames ||
+    network.miningPoolNames.length !== network.miningPoolIds.length
+  )
+    throw new Error("define the names of the mining pools");
+
+  const fogatas: FogataContract[] = network.miningPoolIds.map(
+    (miningPool, i) => {
+      const contract = new FogataContract(
+        {
+          id: miningPool,
+          abi: abiFogata,
+          provider,
+        },
+        network.miningPoolNames[i]
+      );
+      return contract;
+    }
+  );
 
   const sleepTime = 10000;
   const txHandler = new TransactionsHandler(manaSharer, {
@@ -38,7 +49,7 @@ async function main() {
       const fogata = fogatas[i];
       try {
         const { result: poolState } = await fogata.functions.get_pool_state();
-        log("pool state", { poolId: fogata.getId(), poolState });
+        log("pool state", { id: fogata.name, poolState });
         if (!poolState) continue;
 
         const now = Date.now();
@@ -52,7 +63,9 @@ async function main() {
           fogata.options.onlyOperation = false;
           (async () => {
             try {
-              await txHandler.push("pay beneficiaries", [operation]);
+              await txHandler.push(fogata.name, "pay beneficiaries", [
+                operation,
+              ]);
             } catch {}
             fogata.paymentBeneficiaries.processing = false;
           })().catch();
@@ -65,7 +78,9 @@ async function main() {
           fogata.options.onlyOperation = false;
           (async () => {
             try {
-              await txHandler.push("reburn and snapshot", [operation]);
+              await txHandler.push(fogata.name, "reburn and snapshot", [
+                operation,
+              ]);
               fogata.collect.next = now;
             } catch {}
             fogata.reburn.processing = false;
@@ -88,6 +103,7 @@ async function main() {
           (async () => {
             try {
               await txHandler.push(
+                fogata.name,
                 `collect for ${accounts.join(", ")}`,
                 operations
               );
@@ -100,7 +116,8 @@ async function main() {
           })().catch();
         }
       } catch (error) {
-        log(`error in pool ${fogata.getId()}`, {
+        log(`error in pool ${fogata.name}`, {
+          id: fogata.name,
           error: (error as Error).message,
         });
       }

@@ -1,2 +1,4 @@
 dist
 fogata
+logs
+src/fogata-abi.json

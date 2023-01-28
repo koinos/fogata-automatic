@@ -51,7 +51,7 @@ const myTransport = through.obj(function (
   callback: () => void
 ) {
   try {
-    const { time, msg } = chunk;
+    const { time, id, msg } = chunk;
     let message = msg.slice(0, 140);
     if (msg.length > 100) message += "...";
 
@@ -59,7 +59,7 @@ const myTransport = through.obj(function (
     if (timeISO.slice(0, 10) !== today) rotateDay();
 
     stream.raw.write(`${JSON.stringify(chunk)}\n`);
-    let toConsole = `${timeISO}: ${message}`;
+    let toConsole = `${timeISO}: ${id || ""} ${message}`;
 
     if (toConsole) {
       console.log(toConsole);
