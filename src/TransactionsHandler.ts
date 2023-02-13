@@ -43,6 +43,7 @@ interface Rec {
 
 export class TransactionsHandler {
   signer: Signer;
+  payer: string;
   records: Rec[];
   recordsProcessed: Rec[];
   txWaitingTime: number;
@@ -52,6 +53,7 @@ export class TransactionsHandler {
   constructor(
     signer: Signer,
     opts?: {
+      payer?: string;
       txWaitingTime?: number;
       periodTime?: number;
       retries?: number;
@@ -66,10 +68,12 @@ export class TransactionsHandler {
     this.txWaitingTime = 30000;
     this.retries = 3;
     this.periodTime = 10000;
+    this.payer = this.signer.address;
     if (opts) {
       if (opts.txWaitingTime) this.txWaitingTime = opts.txWaitingTime;
       if (opts.periodTime) this.periodTime = opts.periodTime;
       if (opts.retries) this.retries = opts.retries;
+      if (opts.payer) this.payer = opts.payer;
     }
     setInterval(() => {
       this.processNext();
@@ -135,11 +139,12 @@ export class TransactionsHandler {
         log("processing new operations", record);
         const payeeAccount = new Signer({ privateKey: crypto.randomBytes(32) });
         const maxMana = await this.signer.provider!.getAccountRc(
-          this.signer.address
+          this.payer
         );
         const mana = (BigInt(maxMana) / BigInt(10)).toString();
         tx = await this.signer.prepareTransaction({
           header: {
+            payer: this.payer,
             payee: payeeAccount.address,
             rc_limit: mana,
           },

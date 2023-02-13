@@ -14,7 +14,9 @@ export const config = {
           id: process.env.HARBINGER_POOLS_CONTRACT_ID,
         },
         manaSharer: {
-          privateKey: process.env.HARBINGER_MANA_SHARER_PRIVATE_KEY,
+          address: process.env.HARBINGER_MANA_SHARER_ADDRESS,
+          managerPrivateKey:
+            process.env.HARBINGER_MANAGER_MANA_SHARER_PRIVATE_KEY,
         },
       },
       miningPoolIds: process.env.HARBINGER_MINING_POOL_IDS?.split(","),
@@ -27,7 +29,9 @@ export const config = {
           id: process.env.MAINNET_POOLS_CONTRACT_ID,
         },
         manaSharer: {
-          privateKey: process.env.MAINNET_MANA_SHARER_PRIVATE_KEY,
+          address: process.env.MAINNET_MANA_SHARER_ADDRESS,
+          managerPrivateKey:
+            process.env.MAINNET_MANAGER_MANA_SHARER_PRIVATE_KEY,
         },
       },
       miningPoolIds: process.env.MAINNET_MINING_POOL_IDS?.split(","),

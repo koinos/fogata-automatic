@@ -12,8 +12,11 @@ async function main() {
   const network = config.networks[networkName];
   if (!network) throw new Error(`network ${networkName} not found`);
   const provider = new Provider(network.rpcNodes);
-  const manaSharer = Signer.fromWif(network.accounts.manaSharer.privateKey);
-  manaSharer.provider = provider;
+  const { manaSharer } = network.accounts;
+  const managerManaSharer = Signer.fromWif(
+    network.accounts.manaSharer.managerPrivateKey
+  );
+  managerManaSharer.provider = provider;
 
   if (!network.miningPoolIds || network.miningPoolIds.length === 0)
     throw new Error("no mining pools defined");
@@ -38,10 +41,11 @@ async function main() {
     }
   );
 
-  const sleepTime = 10000;
-  const txHandler = new TransactionsHandler(manaSharer, {
+  const sleepTime = 2 * 60 * 60 * 1000;
+  const txHandler = new TransactionsHandler(managerManaSharer, {
     txWaitingTime: config.txWaitingTime,
     retries: config.retries,
+    payer: manaSharer.address,
   });
 
   while (true) {
