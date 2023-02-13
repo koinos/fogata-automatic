@@ -138,9 +138,7 @@ export class TransactionsHandler {
       } else {
         log("processing new operations", record);
         const payeeAccount = new Signer({ privateKey: crypto.randomBytes(32) });
-        const maxMana = await this.signer.provider!.getAccountRc(
-          this.payer
-        );
+        const maxMana = await this.signer.provider!.getAccountRc(this.payer);
         const mana = (BigInt(maxMana) / BigInt(10)).toString();
         tx = await this.signer.prepareTransaction({
           header: {
