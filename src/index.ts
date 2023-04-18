@@ -41,7 +41,6 @@ async function main() {
     }
   );
 
-  const sleepTime = 2 * 60 * 60 * 1000;
   const txHandler = new TransactionsHandler(managerManaSharer, {
     txWaitingTime: config.txWaitingTime,
     retries: config.retries,
@@ -126,10 +125,15 @@ async function main() {
         });
       }
     }
-    await sleep(sleepTime);
+    log(`Next run in ${config.interval} ms`, { interval: config.interval });
+    await sleep(config.interval);
   }
 }
 
-main()
-  .then(() => {})
-  .catch((error) => console.error(error));
+void (async () => {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error);
+  }
+})();

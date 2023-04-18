@@ -23,7 +23,27 @@ The script will start to make the payments and reburns.
 
 ## Docker
 
-Docker container not yet available.
+You can build and run the script using docker.
+
+Build locally with:
+```bash
+docker build -t fogata-automatic .
+```
+
+Run in interactive mode: 
+```bash
+docker run --rm -it --env-file .env --name fogata-automatic fogata-automatic
+```
+
+Or run in detached mode:
+```bash
+docker run -d --env-file .env --volume $(pwd)/logs:/app/logs --name fogata-automatic fogata-automatic
+```
+
+Read logs with:
+```bash
+docker logs fogata-automatic -f
+```
 
 ## References
 

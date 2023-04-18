@@ -38,6 +38,7 @@ export const config = {
       miningPoolNames: process.env.MAINNET_MINING_POOL_NAMES?.split(","),
     },
   },
+  interval: Number(process.env.INTERVAL) || 2 * 60 * 60 * 1000,
   txWaitingTime: Number(process.env.TX_WAITING_TIME) || 30000,
   retries: Number(process.env.RETRIES) || 3,
 };
