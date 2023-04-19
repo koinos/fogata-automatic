@@ -6,3 +6,4 @@ logs
 !.env.example
 .idea
 .vscode
+.git
