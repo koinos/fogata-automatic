@@ -3,6 +3,7 @@ services:
 
 env:
   global:
+    - SH=bash
     - DOCKER_ORG=koinos
     - DOCKER_REPO=automatic-fogata
 
