@@ -12,7 +12,7 @@
     "lint:tsc": "tsc --noEmit --incremental false",
     "start:dev": "ts-node src/index | ts-node src/transport",
     "start": "wrap () { node dist/index.js \"$@\" | node dist/transport.js; }; wrap",
-    "run-once": "node dist/index.js --no-daemon"
+    "start:once": "node dist/index.js --no-daemon"
   },
   "dependencies": {
     "commander": "^11.1.0",
