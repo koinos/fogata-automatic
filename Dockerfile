@@ -12,4 +12,4 @@ COPY --from=builder /app/package.json .
 COPY --from=builder /app/yarn.lock .
 RUN yarn install --production
 COPY --from=builder /app/dist ./dist
-CMD ["yarn", "start"]
+CMD ["yarn", "start", "--network", "mainnet"]
