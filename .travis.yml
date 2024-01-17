@@ -6,13 +6,7 @@ env:
     - SH=bash
     - DOCKER_ORG=koinos
     - DOCKER_REPO=automatic-fogata
-
-before_script:
-  - if [[ $TRAVIS_BRANCH == "main "]]; then
-      export TAG=latest
-    else
-      export TAG=$TRAVIS_BRANCH
-    fi
+    - TAG=`if [ ${TRAVIS_BRANCH} == "main" ]; then echo -n latest; else echo -n ${TRAVIS_BRANCH}; fi`
 
 script:
   - docker build . -t ${DOCKER_ORG}/${DOCKER_REPO}:${TAG}
