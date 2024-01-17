@@ -36,12 +36,18 @@ async function main() {
   });
 
   while(true) {
+    let promises: Promise<void>[] = [];
     for (let i = 0; i < fogatas.length; i += 1) {
       const fogata = fogatas[i];
       try {
         const { result: poolState } = await fogata.functions.get_pool_state();
         log("pool state", { id: fogata.name, poolState });
-        if (!poolState) continue;
+        if (!poolState) {
+          if (!config.daemon) {
+            throw new Error('unable to retrieve pool state');
+          }
+          continue;
+        }
 
         const now = Date.now();
         if (
@@ -53,14 +59,18 @@ async function main() {
           fogata.options.onlyOperation = true;
           const { operation } = await fogata.functions.pay_beneficiaries();
           fogata.options.onlyOperation = false;
-          (async () => {
+          promises.push((async () => {
             try {
               await txHandler.push(fogata.name, "pay beneficiaries", [
                 operation,
               ]);
-            } catch {}
-            fogata.paymentBeneficiaries.processing = false;
-          })().catch();
+              fogata.paymentBeneficiaries.processing = false;
+            } catch (e) {
+              throw e;
+            }
+          })().catch((error) => {
+            throw error;
+          }));
         }
 
         if (config.reburn && now >= fogata.reburn.next && !fogata.reburn.processing) {
@@ -68,15 +78,20 @@ async function main() {
           fogata.options.onlyOperation = true;
           const { operation } = await fogata.functions.reburn_and_snapshot();
           fogata.options.onlyOperation = false;
-          (async () => {
+          promises.push((async () => {
             try {
               await txHandler.push(fogata.name, "reburn and snapshot", [
                 operation,
               ]);
               fogata.collect.next = now;
-            } catch {}
-            fogata.reburn.processing = false;
-          })().catch();
+              fogata.reburn.processing = false;
+            } catch (e) {
+              fogata.reburn.processing = false;
+              throw e;
+            }
+          })().catch((error) => {
+            throw error;
+          }));
         }
 
         if (config.collect && now >= fogata.collect.next && !fogata.collect.processing) {
@@ -92,20 +107,25 @@ async function main() {
             operations.push(operation);
           }
           fogata.options.onlyOperation = false;
-          (async () => {
+          promises.push((async () => {
             try {
+              fogata.reburn.next = Number(poolState.next_snapshot);
+              fogata.paymentBeneficiaries.next =
+                fogata.reburn.next - 15 * 60 * 1000;
+              fogata.collect.next = fogata.reburn.next + 15 * 60 * 1000;
               await txHandler.push(
                 fogata.name,
                 `collect for ${accounts.join(", ")}`,
                 operations
               );
-            } catch {}
-            fogata.reburn.next = Number(poolState.next_snapshot);
-            fogata.paymentBeneficiaries.next =
-              fogata.reburn.next - 15 * 60 * 1000;
-            fogata.collect.next = fogata.reburn.next + 15 * 60 * 1000;
-            fogata.collect.processing = false;
-          })().catch();
+              fogata.collect.processing = false;
+            } catch (e) {
+              fogata.collect.processing = false;
+              throw e;
+            }
+          })().catch((error) => {
+            throw error;
+          }));
         }
       } catch (error) {
         log(`error in pool ${fogata.name}`, {
@@ -115,8 +135,21 @@ async function main() {
       }
     }
 
+    for (var promise of promises) {
+      try {
+        await promise;
+      } catch (error) {
+        log(`${(error as Error).message}`, {
+          error: (error as Error).message,
+        });
+        if (!config.daemon) {
+          throw error;
+        }
+      }
+    }
+
     if (!config.daemon) {
-      process.exit(0);
+      return
     }
 
     log(`Next run in ${config.interval} ms`, { interval: config.interval });
@@ -125,6 +158,9 @@ async function main() {
 }
 
 main()
-  .catch(error => {
-    console.error(error);
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(() => {
+    process.exit(1);
   })
