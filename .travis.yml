@@ -5,7 +5,15 @@ env:
   global:
     - DOCKER_ORG=koinos
     - DOCKER_REPO=automatic-fogata
-    - TAG=`if [ "${TRAVIS_BRANCH}" = "main" ]; then; echo -n latest; else; echo -n $TRAVIS_BRANCH; fi;`
+
+jobs:
+  include:
+    - if: branch = main
+      env:
+      - TAG=latest
+    - if: NOT (branch = main)
+      env:
+      - TAG=${TRAVIS_BRANCH}
 
 script:
   - docker build . -t ${DOCKER_ORG}/${DOCKER_REPO}:${TAG}
