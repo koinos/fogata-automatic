@@ -7,27 +7,15 @@ import { TransactionsHandler } from "./TransactionsHandler";
 import { log, sleep } from "./utilsFogata";
 
 async function main() {
-  const [inputNetworkName] = process.argv.slice(2);
-  const networkName = inputNetworkName || "harbinger";
-  const network = config.networks[networkName];
-  if (!network) throw new Error(`network ${networkName} not found`);
-  const provider = new Provider(network.rpcNodes);
-  const { manaSharer } = network.accounts;
+
+  const provider = new Provider(config.rpcNodes);
+  const { manaSharer } = config.accounts;
   const managerManaSharer = Signer.fromWif(
-    network.accounts.manaSharer.managerPrivateKey
+    config.accounts.manaSharer.managerPrivateKey
   );
   managerManaSharer.provider = provider;
 
-  if (!network.miningPoolIds || network.miningPoolIds.length === 0)
-    throw new Error("no mining pools defined");
-
-  if (
-    !network.miningPoolNames ||
-    network.miningPoolNames.length !== network.miningPoolIds.length
-  )
-    throw new Error("define the names of the mining pools");
-
-  const fogatas: FogataContract[] = network.miningPoolIds.map(
+  const fogatas: FogataContract[] = config.miningPoolIds.map(
     (miningPool, i) => {
       const contract = new FogataContract(
         {
@@ -35,7 +23,7 @@ async function main() {
           abi: abiFogata,
           provider,
         },
-        network.miningPoolNames[i]
+        config.miningPoolNames[i]
       );
       return contract;
     }
@@ -47,7 +35,7 @@ async function main() {
     payer: manaSharer.address,
   });
 
-  while (true) {
+  while(true) {
     for (let i = 0; i < fogatas.length; i += 1) {
       const fogata = fogatas[i];
       try {
@@ -57,6 +45,7 @@ async function main() {
 
         const now = Date.now();
         if (
+          config.pay &&
           now >= fogata.paymentBeneficiaries.next &&
           !fogata.paymentBeneficiaries.processing
         ) {
@@ -74,7 +63,7 @@ async function main() {
           })().catch();
         }
 
-        if (now >= fogata.reburn.next && !fogata.reburn.processing) {
+        if (config.reburn && now >= fogata.reburn.next && !fogata.reburn.processing) {
           fogata.reburn.processing = true;
           fogata.options.onlyOperation = true;
           const { operation } = await fogata.functions.reburn_and_snapshot();
@@ -90,7 +79,7 @@ async function main() {
           })().catch();
         }
 
-        if (now >= fogata.collect.next && !fogata.collect.processing) {
+        if (config.collect && now >= fogata.collect.next && !fogata.collect.processing) {
           fogata.collect.processing = true;
           const { accounts } = (
             await fogata.functions.get_all_accounts<{ accounts: string[] }>()
@@ -125,15 +114,17 @@ async function main() {
         });
       }
     }
+
+    if (!config.daemon) {
+      process.exit(0);
+    }
+
     log(`Next run in ${config.interval} ms`, { interval: config.interval });
     await sleep(config.interval);
   }
 }
 
-void (async () => {
-  try {
-    await main();
-  } catch (error) {
+main()
+  .catch(error => {
     console.error(error);
-  }
-})();
+  })
